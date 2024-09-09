@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGL App</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #070606;
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="glCanvas"></canvas>
+    <script>
+        // Initialize WebGL context
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) {
+            console.error('Unable to initialize WebGL. Your browser or machine may not support it.');
+        } else {
+            const vsSource = `
+                attribute vec4 aVertexPosition;
+                uniform vec2 uTranslation;
+                varying vec2 posColor;
+                void main(void) {
+                    // Apply translation
+                    vec4 translatedPosition = aVertexPosition;
+                    translatedPosition.xy += uTranslation;
+                    posColor = translatedPosition.xy;
+                    gl_PointSize = 5.0;
+                    gl_Position = translatedPosition;
+                }
+            `;
+
+            const fsSource = `
+                precision mediump float;
+                varying vec2 posColor;
+                void main(void) {
+                    gl_FragColor = vec4(posColor.x, posColor.y, 0.5, 1.0);
+                }
+            `;
+
+            const shaderProgram = initShaderProgram(gl, vsSource, fsSource);
+
+            const programInfo = {
+                program: shaderProgram,
+                attribLocations: {
+                    vertexPosition: gl.getAttribLocation(shaderProgram, 'aVertexPosition'),
+                },
+                uniformLocations: {
+                    translation: gl.getUniformLocation(shaderProgram, 'uTranslation'),
+                },
+            };
+
+            const buffers = initBuffers(gl);
+
+            let translation = [0.0, 0.0]; // Initial translation
+            let velocity = [0.01, 0.01]; // Speed at which the square moves
+
+            function animate() {
+                // Update translation based on velocity
+                translation[0] += velocity[0];
+                translation[1] += velocity[1];
+
+                // Reverse direction when hitting the canvas edges
+                if (translation[0] > 1.0 || translation[0] < -1.0) {
+                    velocity[0] *= -1;
+                }
+                if (translation[1] > 1.0 || translation[1] < -1.0) {
+                    velocity[1] *= -1;
+                }
+
+                // Draw the scene with the updated translation
+                drawScene(gl, programInfo, buffers, translation);
+
+                // Request the next frame for animation
+                requestAnimationFrame(animate);
+            }
+
+            animate();
+        }
+
+        function initBuffers(gl) {
+            const positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+
+            const positions = [
+                -0.5, -0.5,
+                 0.5, -0.5,
+                 0.5,  0.5,
+                -0.5,  0.5,
+                -0.5, -0.5
+            ];
+
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+            return {
+                position: positionBuffer,
+            };
+        }
+
+        function drawScene(gl, programInfo, buffers, translation) {
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            {
+                const numComponents = 2;
+                const type = gl.FLOAT;
+                const normalize = false;
+                const stride = 0;
+                const offset = 0;
+                gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
+                gl.vertexAttribPointer(
+                    programInfo.attribLocations.vertexPosition,
+                    numComponents,
+                    type,
+                    normalize,
+                    stride,
+                    offset);
+                gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
+            }
+
+            // Tell WebGL to use our program when drawing
+            gl.useProgram(programInfo.program);
+
+            // Set the translation uniform
+            gl.uniform2fv(programInfo.uniformLocations.translation, translation);
+
+            {
+                const offset = 0;
+                const vertexCount = 5;
+                gl.drawArrays(gl.TRIANGLE_FAN, offset, vertexCount);
+            }
+        }
+
+        function initShaderProgram(gl, vsSource, fsSource) {
+            const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+            const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+
+            const shaderProgram = gl.createProgram();
+            gl.attachShader(shaderProgram, vertexShader);
+            gl.attachShader(shaderProgram, fragmentShader);
+            gl.linkProgram(shaderProgram);
+
+            if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+                console.error('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
+                return null;
+            }
+
+            return shaderProgram;
+        }
+
+        function loadShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+
+            return shader;
+        }
+    </script>
+</body>
+</html>
